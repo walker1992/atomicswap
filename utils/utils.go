@@ -1,4 +1,4 @@
-package htlc
+package utils
 
 import (
 	"crypto/sha256"

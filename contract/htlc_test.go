@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/walker1992/atomicswap/utils"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -91,7 +93,7 @@ func TestNewContract(t *testing.T) {
 
 	var timeLock1Hour = time.Now().Unix() + hourSeconds
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -113,7 +115,7 @@ func TestNewContract(t *testing.T) {
 	}
 
 	fmt.Println("newContract:  ", hexutil.Encode(hashPair.Hash[:]), timeLock1Hour, hashPair.Secret, address.Hash().String())
-	paddedSecret := LeftPad32Bytes([]byte(hashPair.Secret))
+	paddedSecret := utils.LeftPad32Bytes([]byte(hashPair.Secret))
 	fmt.Println("preimage:  ", hexutil.Encode(paddedSecret[:]))
 
 	receipt, err := client.TransactionReceipt(context.Background(), newContractTx.Hash())
@@ -212,7 +214,7 @@ func TestNewContractWithNoETH(t *testing.T) {
 
 	var timeLock1Hour = time.Now().Unix() + hourSeconds
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -243,7 +245,7 @@ func TestNewContractWithPastTimelocks(t *testing.T) {
 
 	var timeLockPast = time.Now().Unix() - 1
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -274,7 +276,7 @@ func TestNewContractDuplicate(t *testing.T) {
 
 	var timeLock1Hour = time.Now().Unix() + hourSeconds
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -311,7 +313,7 @@ func TestWithdraw(t *testing.T) {
 
 	var timeLock1Hour = time.Now().Unix() + hourSeconds
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -344,7 +346,7 @@ func TestWithdraw(t *testing.T) {
 	}
 
 	receiverAuth := makeAuth(t, receiverKey, client, 0)
-	paddedSecret := LeftPad32Bytes([]byte(hashPair.Secret))
+	paddedSecret := utils.LeftPad32Bytes([]byte(hashPair.Secret))
 
 	fmt.Println(hashPair.Secret, paddedSecret)
 
@@ -394,7 +396,7 @@ func TestWithdrawMismatchPreimage(t *testing.T) {
 
 	var timeLock1Hour = time.Now().Unix() + hourSeconds
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -423,7 +425,7 @@ func TestWithdrawMismatchPreimage(t *testing.T) {
 	contractId := newContractTxReceipt.Logs[0].Topics[1]
 
 	receiverAuth := makeAuth(t, receiverKey, client, 0)
-	wrongSecret := LeftPad32Bytes([]byte("random"))
+	wrongSecret := utils.LeftPad32Bytes([]byte("random"))
 	_, err = instance.Withdraw(receiverAuth, contractId, wrongSecret)
 	if !(err != nil && strings.HasPrefix(err.Error(), REQUIRE_FAILED_MSG)) {
 		t.Fatal("expected failure due to mismatch preimage")
@@ -440,7 +442,7 @@ func TestWithdrawNotReceiver(t *testing.T) {
 
 	var timeLock1Hour = time.Now().Unix() + hourSeconds
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -469,7 +471,7 @@ func TestWithdrawNotReceiver(t *testing.T) {
 	contractId := newContractTxReceipt.Logs[0].Topics[1]
 
 	someGuyAuth := makeAuth(t, someGuyKey, client, 0)
-	paddedSecret := LeftPad32Bytes([]byte(hashPair.Secret))
+	paddedSecret := utils.LeftPad32Bytes([]byte(hashPair.Secret))
 	_, err = instance.Withdraw(someGuyAuth, contractId, paddedSecret)
 	if !(err != nil && strings.HasPrefix(err.Error(), REQUIRE_FAILED_MSG)) {
 		t.Fatal("expected failure due to not correct receiver")
@@ -485,7 +487,7 @@ func TestWithdrawAfterTimelock(t *testing.T) {
 
 	var timeLock1Second = time.Now().Unix() + 1
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -516,7 +518,7 @@ func TestWithdrawAfterTimelock(t *testing.T) {
 	time.Sleep(time.Second)
 
 	receiverAuth := makeAuth(t, receiverKey, client, 0)
-	paddedSecret := LeftPad32Bytes([]byte(hashPair.Secret))
+	paddedSecret := utils.LeftPad32Bytes([]byte(hashPair.Secret))
 	_, err = instance.Withdraw(receiverAuth, contractId, paddedSecret)
 	if !(err != nil && strings.HasPrefix(err.Error(), REQUIRE_FAILED_MSG)) {
 		t.Fatal("expected failure due to not correct receiver")
@@ -532,7 +534,7 @@ func TestRefund(t *testing.T) {
 
 	var timeLock1Second = time.Now().Unix() + 1
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
@@ -612,7 +614,7 @@ func TestRefundBeforeTimelock(t *testing.T) {
 
 	var timeLock1Hour = time.Now().Unix() + hourSeconds
 	var receiver = common.HexToAddress(receiverAddress)
-	var hashPair = NewSecretHashPair()
+	var hashPair = utils.NewSecretHashPair()
 
 	client, err := ethclient.Dial("http://127.0.0.1:7545")
 	if err != nil {
