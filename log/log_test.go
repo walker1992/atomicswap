@@ -91,10 +91,3 @@ func TestFcLogMessage(t *testing.T) {
 	}
 	makeLog("message")
 }
-
-func TestGetLoggerMap(t *testing.T) {
-	exist := GetLoggerMap()["producer_plugin"]
-	notEx := GetLoggerMap()["producer_plugin1"]
-	exist.Debug("exist message")
-	notEx.Debug("not exist message")
-}
