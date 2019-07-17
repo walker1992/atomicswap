@@ -28,23 +28,54 @@ const senderKey = "b80dbf638b9128e54f3222d2b6d3213d45521d49bb6317abdf34b219a5520
 //0xbF00C30b93d76ab3D45625645b752b68199c8221
 const receiverKey = "08cd4fde21e980c7d05afa3b0d4d27534e646be3cc3a67b303b055d1166cbae3"
 
+const (
+	TwoDay  = 2 * 24 * 60 * 60
+	OneDay  = 24 * 60 * 60
+	OneHour = 60 * 60
+)
+
+type Contract struct {
+	Sender    common.Address
+	Receiver  common.Address
+	Amount    *big.Int
+	Hashlock  [32]byte
+	Timelock  *big.Int
+	Withdrawn bool
+	Refunded  bool
+	Preimage  [32]byte
+}
+
 func main() {
 	client, err := ethclient.Dial("http://127.0.0.1:8545")
 	if err != nil {
 		log.Crit("Failed to connect server: %s", err)
 	}
 
-	deployContract(client)
+	address, trx, err := deployContract(client)
+	if err != nil {
+		log.Crit("Failed to deploy contract: %s", err)
+	}
 
-	loadContract(client, common.HexToAddress("0x451d4d9309c404A31960392977e71079e5B4834f"))
+	loadHTLC(client, address)
+	log.Info(trx.Hash().String())
 
-	//initiateContract(client, "0x451d4d9309c404A31960392977e71079e5B4834f")
-	getContract(client, "0x451d4d9309c404A31960392977e71079e5B4834f", "0xd85c34830b2afb1d405b91fb6857beb944a2d150564a5443d464180df918d3d5")
+	var hashPair = utils.NewSecretHashPair()
+	fmt.Printf("\n please remember the secret:\n secret:     %s\n secretHash: %s\n\n", hexutil.Encode([]byte(hashPair.Secret)), hexutil.Encode(hashPair.Hash[:]))
 
-	withdraw(client,
-		"0x451d4d9309c404A31960392977e71079e5B4834f",
-		"0xd85c34830b2afb1d405b91fb6857beb944a2d150564a5443d464180df918d3d5",
-		"0x52fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c649")
+	contractId := initiateContract(client, address.String(), common.HexToAddress("0xbF00C30b93d76ab3D45625645b752b68199c8221"), 15000000000, TwoDay, hashPair.Hash)
+
+	//getContract(client, address.String(), contractId)
+	//contract :=GetContract(client, address.String(), contractId)
+	//fmt.Print("%v",contract)
+	if !withdraw(client, address.String(), contractId, hashPair.Secret) {
+		log.Error("Failed to Execute Withdraw !!")
+	}
+
+	getContract(client, address.String(), contractId)
+
+	//if !refund(client, address.String(), contractId) {
+	//	log.Error("Failed to Execute refund!!")
+	//}
 
 }
 
@@ -88,22 +119,22 @@ func makeAuth(private string, client *ethclient.Client, value int64) *bind.Trans
 	return auth
 }
 
-func deployContract(client *ethclient.Client) {
+func deployContract(client *ethclient.Client) (contractAddr common.Address, trx *types.Transaction, err error) {
 	auth := makeAuth(senderKey, client, 0)
 
-	//Deploy contract
 	log.Info("Deploy contract...")
 
 	address, tx, _, err := htlc.DeployHtlc(auth, client)
 	if err != nil {
-		log.Crit("Failed to deploy contract: %s", err)
+		return common.Address{}, nil, err
 	}
 
 	log.Info("contract address = %s", address.Hex())
 	log.Info("transaction hash = %s", tx.Hash().Hex())
+	return address, tx, nil
 }
 
-func loadContract(client *ethclient.Client, contractAddress common.Address) *htlc.Htlc {
+func loadHTLC(client *ethclient.Client, contractAddress common.Address) *htlc.Htlc {
 	instance, err := htlc.NewHtlc(contractAddress, client)
 	if err != nil {
 		log.Crit("Failed to load contract: %s", err)
@@ -113,32 +144,33 @@ func loadContract(client *ethclient.Client, contractAddress common.Address) *htl
 	return instance
 }
 
-func initiateContract(client *ethclient.Client, contractAddress string) {
+func initiateContract(client *ethclient.Client, contractAddr string, receiver common.Address, _amount, _timelock int64, _hashlock [32]byte) (contractId string) {
 	log.Info("Initiate contract...")
-	if IsValidAddress(contractAddress) == false {
-		log.Crit("Invalid address: %s", contractAddress)
+	if IsValidAddress(contractAddr) == false {
+		log.Crit("Invalid address: %s", contractAddr)
 	}
-	instance := loadContract(client, common.HexToAddress(contractAddress))
+	instance := loadHTLC(client, common.HexToAddress(contractAddr))
 
-	var timeLock1Hour = time.Now().Unix() + 3600
-	var receiver = common.HexToAddress("0xbf00c30b93d76ab3d45625645b752b68199c8221")
-	var hashPair = utils.NewSecretHashPair()
-	log.Debug("secret = %s", hexutil.Encode([]byte(hashPair.Secret)))
+	timeLock := time.Now().Unix() + _timelock
+	senderAuth := makeAuth(senderKey, client, _amount)
 
-	senderAuth := makeAuth(senderKey, client, 120000000)
-
-	newContractTx, err := instance.NewContract(senderAuth, receiver, hashPair.Hash, big.NewInt(timeLock1Hour))
+	newContractTx, err := instance.NewContract(senderAuth, receiver, _hashlock, big.NewInt(timeLock))
 	if err != nil {
 		log.Crit("Failed to initiate contract", err)
 	}
 
-	log.Info("transaction hash = %s", newContractTx.Hash().String())
+	log.Info("NewContract trx hash = %s", newContractTx.Hash().String())
 
+	time.Sleep(30 * time.Second)
 	receipt, err := client.TransactionReceipt(context.Background(), newContractTx.Hash())
 	if err != nil {
 		log.Crit("Failed to get tx %s receipt", newContractTx.Hash(), err)
 	}
 
+	if receipt.Status != 1 {
+		log.Error("Failed to NewContract,tx %s", newContractTx.Hash().String())
+		return
+	}
 	contractABI, err := abi.JSON(strings.NewReader(string(htlc.HtlcABI)))
 	if err != nil {
 		log.Crit("Failed to read contract abi", err)
@@ -153,20 +185,24 @@ func initiateContract(client *ethclient.Client, contractAddress string) {
 	logHTLCEvent.Sender = common.HexToAddress(receipt.Logs[0].Topics[2].Hex())
 	logHTLCEvent.Receiver = common.HexToAddress(receipt.Logs[0].Topics[3].Hex())
 
-	log.Info("ContractId = %s", hexutil.Encode(logHTLCEvent.ContractId[:]))
+	contractId = hexutil.Encode(logHTLCEvent.ContractId[:])
+
+	log.Warn("ContractId = %s", hexutil.Encode(logHTLCEvent.ContractId[:]))
 	log.Info("Sender     = %s", logHTLCEvent.Sender.String())
 	log.Info("Receiver   = %s", logHTLCEvent.Receiver.String())
 	log.Info("Amount     = %s", logHTLCEvent.Amount)
 	log.Info("TimeLock   = %s", logHTLCEvent.Timelock)
 	log.Info("SecretHash = %s", hexutil.Encode(logHTLCEvent.Hashlock[:]))
+
+	return
 }
 
-func getContract(client *ethclient.Client, contractAddress string, contractId string) {
+func getContract(client *ethclient.Client, contractAddr, contractId string) {
 	log.Info("Get contract details from %s ...", contractId)
-	if IsValidAddress(contractAddress) == false {
-		log.Crit("Invalid address: %s", contractAddress)
+	if IsValidAddress(contractAddr) == false {
+		log.Crit("Invalid address: %s", contractAddr)
 	}
-	instance := loadContract(client, common.HexToAddress(contractAddress))
+	instance := loadHTLC(client, common.HexToAddress(contractAddr))
 
 	senderAuth := makeAuth(senderKey, client, 0)
 
@@ -185,36 +221,68 @@ func getContract(client *ethclient.Client, contractAddress string, contractId st
 	log.Info("Secret     = %s", hexutil.Encode(contractDetails.Preimage[:]))
 }
 
-func withdraw(client *ethclient.Client, contractAddress string, contractId string, secret string) {
+func withdraw(client *ethclient.Client, contractAddr string, contractId string, secret string) (execute bool) {
 	log.Info("Withdraw from contract %s ...", contractId)
-	if IsValidAddress(contractAddress) == false {
-		log.Crit("Invalid address: %s", contractAddress)
+	if IsValidAddress(contractAddr) == false {
+		log.Crit("Invalid address: %s", contractAddr)
 	}
-	instance := loadContract(client, common.HexToAddress(contractAddress))
+	instance := loadHTLC(client, common.HexToAddress(contractAddr))
 
 	receiverAuth := makeAuth(receiverKey, client, 0)
 
-	receiverBalBefore, err := client.BalanceAt(context.Background(), receiverAuth.From, nil)
-	if err != nil {
-		log.Crit("Failed to get receiver balance: %s", err)
-	}
-
-	log.Info("Before withdraw balance of %s: %s", receiverAuth.From.String(), receiverBalBefore.String())
-
-	var secretBytes [32]byte
-	copy(secretBytes[:], hexutil.MustDecode(secret))
-
-	WithdrawTx, err := instance.Withdraw(receiverAuth, common.HexToHash(contractId), secretBytes)
+	WithdrawTx, err := instance.Withdraw(receiverAuth, common.HexToHash(contractId), utils.LeftPad32Bytes([]byte(secret)))
 	if err != nil {
 		log.Crit("Failed to withdraw with the specified contractId and secret: %s", err)
 	}
 	log.Info("transaction hash = %s", WithdrawTx.Hash().String())
 
+	time.Sleep(30 * time.Second)
+	receipt, err := client.TransactionReceipt(context.Background(), WithdrawTx.Hash())
+	if err != nil {
+		log.Crit("Failed to get tx %s receipt", WithdrawTx.Hash().String(), err)
+	}
+	if receipt.Status != 1 {
+		log.Error("Failed to Execute withdraw trx %s", WithdrawTx.Hash().String())
+		return false
+	}
 	receiverBalAfter, err := client.BalanceAt(context.Background(), receiverAuth.From, nil)
 	if err != nil {
 		log.Crit("Failed to get receiver balance: %s", err)
 	}
 	log.Info("After withdraw balance of %s: %s", receiverAuth.From.String(), receiverBalAfter.String())
+
+	return true
+}
+
+func refund(client *ethclient.Client, contractAddr, contractId string) (execute bool) {
+	log.Info("Refund from contract %s", contractId)
+	if IsValidAddress(contractAddr) == false {
+		log.Crit("Invalid address: %s", contractAddr)
+	}
+
+	senderAuth := makeAuth(senderKey, client, 0)
+	instance := loadHTLC(client, common.HexToAddress(contractAddr))
+	refundTx, err := instance.Refund(senderAuth, common.HexToHash(contractId))
+	if err != nil {
+		log.Error("Failed to refund the contract: %s, %s", contractId, err)
+		return false
+	}
+
+	log.Info("Transaction hash = %s", refundTx.Hash().String())
+
+	time.Sleep(30 * time.Second)
+	receipt, err := client.TransactionReceipt(context.Background(), refundTx.Hash())
+	if err != nil {
+		log.Error("Failed to get tx %s receipt", refundTx.Hash().String())
+		return false
+	}
+	if receipt.Status != 1 {
+		log.Error("Failed to execute refund tx %s", refundTx.Hash().String())
+		return false
+	}
+
+	getContract(client, contractAddr, contractId)
+	return true
 }
 
 func transfer() {
@@ -267,4 +335,36 @@ func transfer() {
 	}
 
 	fmt.Printf("tx sent: %s", signedTx.Hash().Hex())
+}
+
+func sign(client *ethclient.Client) {
+	//client.SendTransaction()
+
+}
+
+func GetContract(client *ethclient.Client, contractAddr, contractId string) Contract {
+	log.Info("Get contract details from %s ...", contractId)
+	if IsValidAddress(contractAddr) == false {
+		log.Crit("Invalid address: %s", contractAddr)
+	}
+	instance := loadHTLC(client, common.HexToAddress(contractAddr))
+
+	senderAuth := makeAuth(senderKey, client, 0)
+
+	contractDetails, err := instance.GetContract(&bind.CallOpts{From: senderAuth.From}, common.HexToHash(contractId))
+	if err != nil {
+		log.Crit("Failed to GetContract call")
+	}
+
+	return Contract{
+		Sender:    contractDetails.Sender,
+		Receiver:  contractDetails.Receiver,
+		Amount:    contractDetails.Amount,
+		Timelock:  contractDetails.Timelock,
+		Hashlock:  contractDetails.Hashlock,
+		Withdrawn: contractDetails.Withdrawn,
+		Refunded:  contractDetails.Refunded,
+		Preimage:  contractDetails.Preimage,
+	}
+
 }
