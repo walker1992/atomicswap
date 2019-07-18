@@ -60,16 +60,16 @@ func main() {
 	log.Info(trx.Hash().String())
 
 	var hashPair = utils.NewSecretHashPair()
-	fmt.Printf("\n please remember the secret:\n secret:     %s\n secretHash: %s\n\n", hexutil.Encode([]byte(hashPair.Secret)), hexutil.Encode(hashPair.Hash[:]))
+	fmt.Printf("\n please remember the secret:\n secret:     %s\n secretHash: %s\n\n", hashPair.Secret, hexutil.Encode(hashPair.Hash[:]))
 
 	contractId := initiateContract(client, address.String(), common.HexToAddress("0xbF00C30b93d76ab3D45625645b752b68199c8221"), 15000000000, TwoDay, hashPair.Hash)
 
 	//getContract(client, address.String(), contractId)
 	//contract :=GetContract(client, address.String(), contractId)
 	//fmt.Print("%v",contract)
-	if !withdraw(client, address.String(), contractId, hashPair.Secret) {
-		log.Error("Failed to Execute Withdraw !!")
-	}
+	//if !withdraw(client, address.String(), contractId, hashPair.Secret) {
+	//	log.Error("Failed to Execute Withdraw !!")
+	//}
 
 	getContract(client, address.String(), contractId)
 
