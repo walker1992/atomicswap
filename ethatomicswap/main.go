@@ -40,11 +40,12 @@ func init() {
 		fmt.Println("Usage: ethatomicswap [flags] cmd [cmd args]")
 		fmt.Println()
 		fmt.Println("Commands:")
-		fmt.Println("  deloyContract: <participant address> <amount>")
-		fmt.Println("  newContract: <initiator address> <amount> <secret hash>")
+		fmt.Println("  deloyContract: <participant address> ")
+		fmt.Println("  newContract: <contractAddress> <receiveAaddress> <amount> <time><secret>")
 		fmt.Println("  withdraw: <contractAddress> <contractId> <secret>")
 		fmt.Println("  refund: <contractAddress> <contractId>")
-		fmt.Println("  getContract: <contractAddress> <contractId> ")
+		fmt.Println("  getContract: <contractAddress> <contractId>")
+		fmt.Println("  getBalance: <address>")
 
 		fmt.Println()
 		fmt.Println("Flags:")
@@ -75,19 +76,16 @@ func run() (err error, showUsage bool) {
 	switch args[0] {
 	case "deployContract":
 		cmdArgs = 0
-		log.Info("deployContract")
 	case "newContract":
 		cmdArgs = 5
-		log.Info("newContract")
 	case "withdraw":
 		cmdArgs = 3
-		log.Info("withdraw")
 	case "refund":
-		cmdArgs = 1
-		log.Info("refund")
+		cmdArgs = 2
 	case "getContract":
 		cmdArgs = 2
-		log.Info("getContract")
+	case "getBalance":
+		cmdArgs = 1
 	default:
 		return fmt.Errorf("Unkonw command %v\n", os.Args[1]), true
 	}
@@ -127,7 +125,7 @@ func run() (err error, showUsage bool) {
 			return err, true
 		}
 		secret := NewSecret(args[5])
-		fmt.Printf("\n please remember the secret:\n secret:     %s\n secretHash: %s\n\n", secret.Secret, hexutil.Encode(secret.Hash[:]))
+		fmt.Printf(" please remember the secret:\n secret:     %s\n secretHash: %s\n\n", secret.Secret, hexutil.Encode(secret.Hash[:]))
 
 		contract, err := newContract(client, contractAddr, receiver, amount, timelock, secret.Hash)
 		if err != nil {
@@ -170,6 +168,10 @@ func run() (err error, showUsage bool) {
 		fmt.Printf("Withdrawn  = %v\n", contract.Withdrawn)
 		fmt.Printf("Refunded   = %v\n", contract.Refunded)
 		fmt.Printf("Secret     = %s\n", hexutil.Encode(contract.Preimage[:]))
+	case "getBalance":
+		addr := common.HexToAddress(args[1])
+		balance := getBalance(client, addr)
+		fmt.Printf("The balance of %s: %s (wei)\n", addr.String(), balance.String())
 	}
 	return nil, false
 }
@@ -345,6 +347,16 @@ func refund(client *ethclient.Client, contractAddr, contractId string) error {
 	}
 
 	return nil
+}
+
+func getBalance(client *ethclient.Client, addr common.Address) (balance *big.Int) {
+	balance, err := client.BalanceAt(context.Background(), addr, nil)
+	if err != nil {
+		fmt.Println("Failed to getBalance,please check address or do later!")
+		return new(big.Int)
+	}
+	log.Info("Your balance now is %s\n", balance.String())
+	return balance
 }
 
 // IsValidAddress validate hex address

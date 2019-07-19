@@ -12,8 +12,8 @@ var (
 )
 
 func init() {
-	root.SetHandler(TerminalHandler)
-	//root.SetHandler(DiscardHandler())
+	//root.SetHandler(TerminalHandler)
+	root.SetHandler(DiscardHandler())
 	//root.SetHandler(LvlFilterHandler(LvlError,TerminalHandler))
 
 }
